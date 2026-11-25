@@ -10,6 +10,7 @@ on:
 
 permissions:
   contents: write
+  actions: write   # чтобы запуск сам запускал следующий
 
 concurrency:
   group: prices
@@ -52,3 +53,13 @@ jobs:
           git commit -q -m "Цены $(date -u +'%Y-%m-%d %H:%M UTC')"
           git push -q -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" data
           echo "✓ выложено: https://raw.githubusercontent.com/${{ github.repository }}/data/so2prices.json"
+
+      - name: Запустить следующий круг
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # GitHub часто пропускает запуски по расписанию в новых репозиториях,
+          # поэтому каждый запуск сам запускает следующий (расписание остаётся запасным)
+          gh workflow run prices.yml --repo "${{ github.repository }}" --ref "${{ github.ref_name }}" \
+            && echo "✓ следующий запуск поставлен в очередь" || echo "• не удалось поставить следующий запуск"
