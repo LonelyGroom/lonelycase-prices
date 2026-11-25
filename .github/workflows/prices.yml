@@ -1,6 +1,7 @@
-# LonelyCase — цены Standoff 2. Каждые 30 минут обновляет часть цен и выкладывает so2prices.json
+# LonelyCase — цены Standoff 2 и CS2. Каждые 30 минут обновляет цены и выкладывает их
 # в ветку data этого репозитория. Приложение читает:
-# https://raw.githubusercontent.com/<владелец>/<репозиторий>/data/so2prices.json
+# https://raw.githubusercontent.com/<владелец>/<репозиторий>/data/so2prices.json  (Standoff 2)
+# https://raw.githubusercontent.com/<владелец>/<репозиторий>/data/cs2market.json  (CS2, Skinport)
 name: Prices Standoff 2
 
 on:
@@ -32,12 +33,19 @@ jobs:
           if git clone -q --depth 1 -b data "https://github.com/${{ github.repository }}.git" /tmp/prev 2>/dev/null; then
             cp /tmp/prev/state.json . 2>/dev/null || true
             [ -d /tmp/prev/hist ] && cp -r /tmp/prev/hist . || true
-            echo "✓ прошлое состояние: $(ls hist 2>/dev/null | wc -l) графиков"
+            cp /tmp/prev/cs2meta.json . 2>/dev/null || true
+            [ -d /tmp/prev/cs2hist ] && cp -r /tmp/prev/cs2hist . || true
+            echo "✓ прошлое состояние: $(ls hist 2>/dev/null | wc -l) графиков SO2, $(ls cs2hist 2>/dev/null | wc -l) файлов графиков CS2"
           else
             echo "• ветки data ещё нет — первый запуск"
           fi
 
-      - name: Скачать цены
+      - name: Цены CS2 (Skinport)
+        continue-on-error: true
+        timeout-minutes: 4
+        run: node cs2bot.js
+
+      - name: Скачать цены Standoff 2
         run: node pricebot.js
 
       - name: Выложить в ветку data
@@ -45,6 +53,8 @@ jobs:
           [ -f so2prices.json ] || { echo "• файла цен нет — нечего выкладывать"; exit 0; }
           mkdir -p /tmp/out && cp so2prices.json state.json /tmp/out/
           [ -d hist ] && cp -r hist /tmp/out/ || true
+          for f in cs2market.json cs2meta.json; do [ -f $f ] && cp $f /tmp/out/; done
+          [ -d cs2hist ] && cp -r cs2hist /tmp/out/ || true
           cd /tmp/out
           git init -q -b data
           git config user.name "prices-bot"
