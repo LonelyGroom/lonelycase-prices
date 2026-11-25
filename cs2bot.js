@@ -77,16 +77,18 @@ async function buildMeta() {
     }
   };
   const col = (x) => (Array.isArray(x.collections) && x.collections[0] && x.collections[0].name) || '';
+  // в каких кейсах/капсулах выпадает в игре: [[название, картинка], ...]
+  const crt = (x) => (Array.isArray(x.crates) ? x.crates.filter((c) => c && c.name).slice(0, 12).map((c) => [c.name, c.image || '']) : []);
   const files = [
-    ['skins_not_grouped.json', (x) => [x.image || '', rarOf(x.rarity), skinCat(x), col(x)]],
-    ['stickers.json', (x) => [x.image || '', rarOf(x.rarity), 'sticker', col(x)]],
+    ['skins_not_grouped.json', (x) => [x.image || '', rarOf(x.rarity), skinCat(x), col(x), crt(x)]],
+    ['stickers.json', (x) => [x.image || '', rarOf(x.rarity), 'sticker', col(x), crt(x)]],
     ['sticker_slabs.json', (x) => [x.image || '', rarOf(x.rarity), 'charm', col(x)]],
-    ['keychains.json', (x) => [x.image || '', rarOf(x.rarity), 'charm', col(x)]],
+    ['keychains.json', (x) => [x.image || '', rarOf(x.rarity), 'charm', col(x), crt(x)]],
     ['crates.json', (x) => [x.image || '', '', 'container', '']],
     ['agents.json', (x) => [x.image || '', rarOf(x.rarity), /counter/i.test(String((x.team && (x.team.id || x.team.name)) || '')) ? 'agent_ct' : 'agent_t', col(x)]],
-    ['graffiti.json', (x) => [x.image || '', rarOf(x.rarity), 'graffiti', col(x)]],
-    ['patches.json', (x) => [x.image || '', rarOf(x.rarity), 'patch', '']],
-    ['music_kits.json', (x) => [x.image || '', rarOf(x.rarity), 'music', '']],
+    ['graffiti.json', (x) => [x.image || '', rarOf(x.rarity), 'graffiti', col(x), crt(x)]],
+    ['patches.json', (x) => [x.image || '', rarOf(x.rarity), 'patch', '', crt(x)]],
+    ['music_kits.json', (x) => [x.image || '', rarOf(x.rarity), 'music', '', crt(x)]],
     ['collectibles.json', (x) => [x.image || '', rarOf(x.rarity), 'other', '']],
     ['keys.json', (x) => [x.image || '', '', 'container', '']],
   ];
@@ -121,10 +123,10 @@ const priceAt = (pts, ts) => { // цена ближе всего к момент
   // 1) справочник картинок (кэш на сутки)
   let metaFile = null;
   try { metaFile = JSON.parse(fs.readFileSync('cs2meta.json', 'utf8')); } catch (e) { /* нет */ }
-  if (!metaFile || !metaFile.meta || now - (metaFile.updated || 0) > META_TTL) {
+  if (!metaFile || !metaFile.meta || metaFile.v !== 2 || now - (metaFile.updated || 0) > META_TTL) {
     log('• обновляю справочник картинок CS2 (CSGO-API)…');
     const meta = await buildMeta();
-    if (Object.keys(meta).length > 1000) { metaFile = { updated: now, meta }; fs.writeFileSync('cs2meta.json', JSON.stringify(metaFile)); }
+    if (Object.keys(meta).length > 1000) { metaFile = { v: 2, updated: now, meta }; fs.writeFileSync('cs2meta.json', JSON.stringify(metaFile)); }
     else if (!metaFile) metaFile = { updated: 0, meta };
     log(`✓ справочник: ${Object.keys(metaFile.meta).length} предметов`);
   }
@@ -181,6 +183,8 @@ const priceAt = (pts, ts) => { // цена ближе всего к момент
   };
   const cols = [], colIdx = new Map();
   const colId = (c) => { if (!c) return -1; if (!colIdx.has(c)) { colIdx.set(c, cols.length); cols.push(c); } return colIdx.get(c); };
+  const crs = [], crIdx = new Map(); // кейсы игры: [название, картинка]
+  const crId = (c) => { if (!crIdx.has(c[0])) { crIdx.set(c[0], crs.length); crs.push([c[0], pack(c[1])]); } return crIdx.get(c[0]); };
   const plain = (n) => n.replace(/^★\s*/, '').replace(/^StatTrak™\s*/, '').replace(/^Souvenir\s+/, '').replace(/\s*\((Factory New|Minimal Wear|Field-Tested|Well-Worn|Battle-Scarred)\)$/, '');
   const metaOf = (n) => META[n] || META[n.replace('StatTrak™ ', '')] || META[n.replace(/^Souvenir /, '')] || null;
   let noMeta = 0;
@@ -199,8 +203,9 @@ const priceAt = (pts, ts) => { // цена ближе всего к момент
       else cat = 'other';
     }
     const c = ch[n] || [0, 0];
-    return [n, price[n], c[0], c[1], m[1] || '', pack(m[0] || ''), cat, colId(m[3] || '')];
+    const cr = Array.isArray(m[4]) ? m[4].map(crId) : [];
+    return cr.length ? [n, price[n], c[0], c[1], m[1] || '', pack(m[0] || ''), cat, colId(m[3] || ''), cr] : [n, price[n], c[0], c[1], m[1] || '', pack(m[0] || ''), cat, colId(m[3] || '')];
   });
-  fs.writeFileSync('cs2market.json', JSON.stringify({ updated: now, cur: 'RUB', pre, cols, rows }));
+  fs.writeFileSync('cs2market.json', JSON.stringify({ updated: now, cur: 'RUB', pre, cols, crs, rows }));
   log(`✓ cs2market.json: ${rows.length} предметов (без картинки: ${noMeta}), графиков: ${Object.keys(shards).length} файлов`);
 })().catch((e) => { console.log('• цены CS2 не обновились: ' + e.message); process.exitCode = 0; });
