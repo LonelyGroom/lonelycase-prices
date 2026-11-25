@@ -10,7 +10,7 @@ const BASES = ['https://standoff-2.com/skins-new.php', 'https://standoff-2.com/s
 const UA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1';
 const HDR = { 'User-Agent': UA, Accept: 'application/json, text/javascript, */*', Referer: 'https://standoff-2.com/shop/', 'X-Requested-With': 'XMLHttpRequest' };
 const BUDGET = 22 * 60000;   // минут на один запуск (запуск раз в 30 мин)
-const GAP = 3200;            // пауза между запросами, мс (~19 в минуту)
+const GAP = 2200;            // пауза между запросами, мс (~27 в минуту; при 429 скрипт сам ждёт)
 const NAMES_EVERY = 12 * 3600; // список предметов и редкость — раз в 12 часов
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
