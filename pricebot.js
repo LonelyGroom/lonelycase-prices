@@ -2,6 +2,7 @@
 // Запускается GitHub Actions каждые 30 минут. Сайт standoff-2.com пропускает ~20 запросов в минуту,
 // поэтому за один запуск обновляются предметы, которые дольше всех не обновлялись, а между запусками
 // всё хранится в state.json. Полный круг по ~2400 предметам — примерно за 2 часа.
+// Графики: hist/<FNV-1a от названия>.json = { n: название, p: [[время, цена], ...] }
 // Результат: so2prices.json = { updated, cur:"G", src, items:{название: цена}, ch:{название:[Δдень %, Δнеделя %]}, rar:{название: редкость} }
 const fs = require('fs');
 
@@ -38,6 +39,23 @@ function rareId(v) {
   if (/arcane|аркан|тайн/.test(t)) return 'arcane';
   if (/nameless|безым/.test(t)) return 'nameless';
   return '';
+}
+// имя файла истории: FNV-1a (32 бита) от названия — так же считает приложение
+function histKey(name) {
+  let h = 0x811c9dc5;
+  for (const ch of String(name)) { h ^= ch.codePointAt(0); h = Math.imul(h, 0x01000193) >>> 0; }
+  return h.toString(16).padStart(8, '0');
+}
+// история для графика: последние 2 суток — точка в час, до 30 дней — раз в 6 часов, до года — раз в сутки
+function compact(rows) {
+  const nowMs = Date.now(), H = 3600000, out = new Map();
+  for (const r of rows) {
+    const age = nowMs - r.t;
+    if (age > 366 * 24 * H) continue;
+    const step = age <= 48 * H ? H : age <= 30 * 24 * H ? 6 * H : 24 * H;
+    out.set(step + ':' + Math.floor(r.t / step), [Math.floor(r.t / 1000), r.p]); // последняя цена в интервале
+  }
+  return [...out.values()].sort((a, b) => a[0] - b[0]);
 }
 function priceAt(rows, at) { let p = 0; for (const r of rows) { if (r.t <= at) p = r.p; else break; } return p; }
 
@@ -89,6 +107,7 @@ function priceAt(rows, at) { let p = 0; for (const r of rows) { if (r.t <= at) p
         const cur = rows[rows.length - 1].p, n = Date.now();
         const d1 = priceAt(rows, n - day), w1 = priceAt(rows, n - 7 * day);
         st.items[name] = { p: r2(cur), d: d1 ? r2(((cur - d1) / d1) * 100) : 0, w: w1 ? r2(((cur - w1) / w1) * 100) : 0, t: now() };
+        try { fs.mkdirSync('hist', { recursive: true }); fs.writeFileSync(`hist/${histKey(name)}.json`, JSON.stringify({ n: name, p: compact(rows) })); } catch (e) { /* без графика */ }
       } else {
         st.items[name] = Object.assign({}, st.items[name], { t: now() }); // нет истории — отложить
       }
