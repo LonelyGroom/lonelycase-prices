@@ -1,0 +1,48 @@
+# LonelyCase — цены Standoff 2. Каждые 30 минут обновляет часть цен и выкладывает so2prices.json
+# в ветку data этого репозитория. Приложение читает:
+# https://raw.githubusercontent.com/<владелец>/<репозиторий>/data/so2prices.json
+name: Prices Standoff 2
+
+on:
+  schedule:
+    - cron: '*/30 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: prices
+  cancel-in-progress: false
+
+jobs:
+  prices:
+    runs-on: ubuntu-latest
+    timeout-minutes: 28
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Взять прошлое состояние из ветки data
+        run: |
+          git fetch origin data --depth=1 2>/dev/null && git show origin/data:state.json > state.json 2>/dev/null || echo "• ветки data ещё нет — первый запуск"
+          ls -la state.json 2>/dev/null || true
+
+      - name: Скачать цены
+        run: node pricebot.js
+
+      - name: Выложить в ветку data
+        run: |
+          [ -f so2prices.json ] || { echo "• файла цен нет — нечего выкладывать"; exit 0; }
+          mkdir -p /tmp/out && cp so2prices.json state.json /tmp/out/
+          cd /tmp/out
+          git init -q -b data
+          git config user.name "prices-bot"
+          git config user.email "prices-bot@users.noreply.github.com"
+          git add so2prices.json state.json
+          git commit -q -m "Цены $(date -u +'%Y-%m-%d %H:%M UTC')"
+          git push -q -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" data
+          echo "✓ выложено: https://raw.githubusercontent.com/${{ github.repository }}/data/so2prices.json"
