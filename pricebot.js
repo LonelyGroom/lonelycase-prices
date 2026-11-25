@@ -2,6 +2,7 @@
 // Запускается GitHub Actions каждые 30 минут. Сайт standoff-2.com пропускает ~20 запросов в минуту,
 // поэтому за один запуск обновляются предметы, которые дольше всех не обновлялись, а между запусками
 // всё хранится в state.json. Полный круг по ~2400 предметам — примерно за 2 часа.
+// Состав кейсов: col = { название: [коллекция, тип] } из getModelInfo
 // Графики: hist/<FNV-1a от названия>.json = { n: название, p: [[время, цена], ...] }
 // Результат: so2prices.json = { updated, cur:"G", src, items:{название: цена}, ch:{название:[Δдень %, Δнеделя %]}, rar:{название: редкость} }
 const fs = require('fs');
@@ -61,11 +62,11 @@ function priceAt(rows, at) { let p = 0; for (const r of rows) { if (r.t <= at) p
 
 (async () => {
   const t0 = Date.now();
-  let st = { base: '', names: [], namesAt: 0, rar: {}, items: {} };
+  let st = { base: '', names: [], namesAt: 0, rar: {}, col: {}, items: {} };
   try { st = Object.assign(st, JSON.parse(fs.readFileSync('state.json', 'utf8'))); } catch (e) { console.log('state.json нет — начинаю с нуля'); }
 
   // 1) список предметов и редкость (раз в 12 часов)
-  if (!st.names.length || now() - st.namesAt > NAMES_EVERY) {
+  if (!st.names.length || now() - st.namesAt > NAMES_EVERY || !st.col || !Object.keys(st.col).length) {
     for (const b of BASES) {
       try {
         const j = await getJson(b + '?command=getNames');
@@ -77,14 +78,23 @@ function priceAt(rows, at) { let p = 0; for (const r of rows) { if (r.t <= at) p
     try {
       await sleep(GAP);
       const info = await getJson(st.base + '?command=getModelInfo', 40000);
-      const rar = {}; const seen = {};
+      const rar = {}; const seen = {}; const col = {};
       for (const m of Array.isArray(info) ? info : []) {
+        // коллекция и тип — чтобы показывать, что лежит в кейсе
+        const c = String((m && (m.Collection || m.collection)) || '').trim();
+        const ty = [m && m.type, m && m.subtype, m && (m.Category || m.category)].filter(Boolean).join(' ').trim();
+        if (m && m.name && (c || ty)) col[m.name] = [c.slice(0, 60), ty.slice(0, 60)];
         const raw = m && (m.rare || m.Rare || m.rarity);
         const id = rareId(raw);
         if (m && m.name && id) rar[m.name] = id;
         seen[raw || '—'] = (seen[raw || '—'] || 0) + 1;
       }
       if (Object.keys(rar).length) st.rar = rar;
+      if (Object.keys(col).length) st.col = col;
+      const cs = {}; for (const v of Object.values(col)) if (v[0]) cs[v[0]] = (cs[v[0]] || 0) + 1;
+      console.log(`коллекции: ${Object.keys(cs).length}; примеры: ${Object.entries(cs).slice(0, 8).map(([k, v]) => k + '×' + v).join(', ')}`);
+      const tys = {}; for (const v of Object.values(col)) if (v[1]) tys[v[1]] = (tys[v[1]] || 0) + 1;
+      console.log(`типы: ${Object.entries(tys).slice(0, 12).map(([k, v]) => k + '×' + v).join(', ')}`);
       console.log(`редкость у ${Object.keys(rar).length}; значения: ${Object.entries(seen).slice(0, 10).map(([k, v]) => k + '×' + v).join(', ')}`);
     } catch (e) { console.log('редкость не получена: ' + e.message); }
   }
@@ -121,14 +131,15 @@ function priceAt(rows, at) { let p = 0; for (const r of rows) { if (r.t <= at) p
   }
 
   // 3) итоговый файл для приложения
-  const items = {}, ch = {}, rar = {};
+  const items = {}, ch = {}, rar = {}, col = {};
   for (const [k, v] of Object.entries(st.items)) {
     if (!(v && v.p > 0)) continue;
     items[k] = v.p; ch[k] = [v.d || 0, v.w || 0];
     if (st.rar[k]) rar[k] = st.rar[k];
+    if (st.col && st.col[k]) col[k] = st.col[k];
   }
   fs.writeFileSync('state.json', JSON.stringify(st));
-  fs.writeFileSync('so2prices.json', JSON.stringify({ updated: now(), cur: 'G', src: 'standoff-2.com', items, ch, rar }));
+  fs.writeFileSync('so2prices.json', JSON.stringify({ updated: now(), cur: 'G', src: 'standoff-2.com', items, ch, rar, col }));
   const ages = Object.values(st.items).map((v) => now() - (v.t || 0));
   const oldest = ages.length ? Math.round(Math.max(...ages) / 3600) : 0;
   console.log(`✓ обновлено ${ok}, ошибок ${fail}, пауз из-за 429: ${s429}; всего с ценой ${Object.keys(items).length} из ${st.names.length}; самая старая цена — ${oldest} ч назад (${Math.round((Date.now() - t0) / 1000)} с)`);
