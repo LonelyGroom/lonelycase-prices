@@ -28,8 +28,13 @@ jobs:
 
       - name: Взять прошлое состояние из ветки data
         run: |
-          git fetch origin data --depth=1 2>/dev/null && git show origin/data:state.json > state.json 2>/dev/null || echo "• ветки data ещё нет — первый запуск"
-          ls -la state.json 2>/dev/null || true
+          if git clone -q --depth 1 -b data "https://github.com/${{ github.repository }}.git" /tmp/prev 2>/dev/null; then
+            cp /tmp/prev/state.json . 2>/dev/null || true
+            [ -d /tmp/prev/hist ] && cp -r /tmp/prev/hist . || true
+            echo "✓ прошлое состояние: $(ls hist 2>/dev/null | wc -l) графиков"
+          else
+            echo "• ветки data ещё нет — первый запуск"
+          fi
 
       - name: Скачать цены
         run: node pricebot.js
@@ -38,11 +43,12 @@ jobs:
         run: |
           [ -f so2prices.json ] || { echo "• файла цен нет — нечего выкладывать"; exit 0; }
           mkdir -p /tmp/out && cp so2prices.json state.json /tmp/out/
+          [ -d hist ] && cp -r hist /tmp/out/ || true
           cd /tmp/out
           git init -q -b data
           git config user.name "prices-bot"
           git config user.email "prices-bot@users.noreply.github.com"
-          git add so2prices.json state.json
+          git add -A
           git commit -q -m "Цены $(date -u +'%Y-%m-%d %H:%M UTC')"
           git push -q -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" data
           echo "✓ выложено: https://raw.githubusercontent.com/${{ github.repository }}/data/so2prices.json"
