@@ -161,9 +161,9 @@ const priceAt = (pts, ts) => { // цена ближе всего к момент
     else last[1] = price[n];
     pts = thin(pts);
     sh[n] = pts;
-    const d = priceAt(pts, now - 86400), w = priceAt(pts, now - 7 * 86400) || (pts[0] && pts[0][1]) || 0;
+    const d = priceAt(pts, now - 86400), w = priceAt(pts, now - 7 * 86400) || (pts[0] && pts[0][1]) || 0, mo = priceAt(pts, now - 30 * 86400) || (pts[0] && pts[0][1]) || 0;
     const pct = (old) => (old > 0 ? Math.round(((price[n] - old) / old) * 10000) / 100 : 0);
-    if (d || w) ch[n] = [d ? pct(d) : 0, w ? pct(w) : 0];
+    if (d || w || mo) ch[n] = [d ? pct(d) : 0, w ? pct(w) : 0, mo ? pct(mo) : 0];
   }
   // предметы, которых больше нет на Skinport, — история хранится, пока не устареет
   for (const k of Object.keys(shards)) {
@@ -204,7 +204,8 @@ const priceAt = (pts, ts) => { // цена ближе всего к момент
     }
     const c = ch[n] || [0, 0];
     const cr = Array.isArray(m[4]) ? m[4].map(crId) : [];
-    return cr.length ? [n, price[n], c[0], c[1], m[1] || '', pack(m[0] || ''), cat, colId(m[3] || ''), cr] : [n, price[n], c[0], c[1], m[1] || '', pack(m[0] || ''), cat, colId(m[3] || '')];
+    // [название, цена, Δдень, Δнеделя, редкость, картинка, категория, коллекция, кейсы (или 0), Δ30 дней]
+    return [n, price[n], c[0], c[1], m[1] || '', pack(m[0] || ''), cat, colId(m[3] || ''), cr.length ? cr : 0, c[2] || 0];
   });
   fs.writeFileSync('cs2market.json', JSON.stringify({ updated: now, cur: 'RUB', pre, cols, crs, rows }));
   log(`✓ cs2market.json: ${rows.length} предметов (без картинки: ${noMeta}), графиков: ${Object.keys(shards).length} файлов`);

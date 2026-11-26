@@ -4,7 +4,7 @@
 // всё хранится в state.json. Полный круг по ~2400 предметам — примерно за 2 часа.
 // Состав кейсов: col = { название: [коллекция, тип] } из getModelInfo
 // Графики: hist/<FNV-1a от названия>.json = { n: название, p: [[время, цена], ...] }
-// Результат: so2prices.json = { updated, cur:"G", src, items:{название: цена}, ch:{название:[Δдень %, Δнеделя %]}, rar:{название: редкость} }
+// Результат: so2prices.json = { updated, cur:"G", src, items:{название: цена}, ch:{название:[Δдень %, Δнеделя %, Δ30 дней %]}, rar:{название: редкость} }
 const fs = require('fs');
 
 const BASES = ['https://standoff-2.com/skins-new.php', 'https://standoff-2.com/skins.php'];
@@ -125,8 +125,9 @@ function priceAt(rows, at) { let p = 0; for (const r of rows) { if (r.t <= at) p
         .filter((r) => r.t && r.p > 0).sort((a, b) => a.t - b.t);
       if (rows.length) {
         const cur = rows[rows.length - 1].p, n = Date.now();
-        const d1 = priceAt(rows, n - day), w1 = priceAt(rows, n - 7 * day);
-        st.items[name] = { p: r2(cur), d: d1 ? r2(((cur - d1) / d1) * 100) : 0, w: w1 ? r2(((cur - w1) / w1) * 100) : 0, t: now() };
+        const d1 = priceAt(rows, n - day), w1 = priceAt(rows, n - 7 * day), m1 = priceAt(rows, n - 30 * day);
+        const pc = (old) => (old ? r2(((cur - old) / old) * 100) : 0);
+        st.items[name] = { p: r2(cur), d: pc(d1), w: pc(w1), m: pc(m1), t: now() };
         try { fs.mkdirSync('hist', { recursive: true }); fs.writeFileSync(`hist/${histKey(name)}.json`, JSON.stringify({ n: name, p: compact(rows) })); } catch (e) { /* без графика */ }
       } else {
         st.items[name] = Object.assign({}, st.items[name], { t: now() }); // нет истории — отложить
@@ -144,7 +145,7 @@ function priceAt(rows, at) { let p = 0; for (const r of rows) { if (r.t <= at) p
   const items = {}, ch = {}, rar = {}, col = {}, pat = {};
   for (const [k, v] of Object.entries(st.items)) {
     if (!(v && v.p > 0)) continue;
-    items[k] = v.p; ch[k] = [v.d || 0, v.w || 0];
+    items[k] = v.p; ch[k] = [v.d || 0, v.w || 0, v.m || 0];
     if (st.rar[k]) rar[k] = st.rar[k];
     if (st.pat && st.pat[k]) pat[k] = 1;
     if (st.col && st.col[k]) col[k] = st.col[k];
