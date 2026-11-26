@@ -78,18 +78,28 @@ function priceAt(rows, at) { let p = 0; for (const r of rows) { if (r.t <= at) p
     try {
       await sleep(GAP);
       const info = await getJson(st.base + '?command=getModelInfo', 40000);
-      const rar = {}; const seen = {}; const col = {};
+      const rar = {}; const seen = {}; const col = {}; const pat = {}; const keys = new Set();
       for (const m of Array.isArray(info) ? info : []) {
         // коллекция и тип — чтобы показывать, что лежит в кейсе
         const c = String((m && (m.Collection || m.collection)) || '').trim();
         const ty = [m && m.type, m && m.subtype, m && (m.Category || m.category)].filter(Boolean).join(' ').trim();
         if (m && m.name && (c || ty)) col[m.name] = [c.slice(0, 60), ty.slice(0, 60)];
+        // паттерн (в игре — кубик): ищем любое поле со словом pattern
+        if (m && typeof m === 'object') {
+          for (const k of Object.keys(m)) {
+            keys.add(k);
+            if (/pattern/i.test(k)) { const v = m[k]; if (v === true || v === 1 || /^(1|true|yes)$/i.test(String(v))) pat[m.name] = 1; }
+          }
+          if (/pattern/i.test(String(m.type || '') + ' ' + String(m.subtype || '') + ' ' + String(m.Category || m.category || ''))) pat[m.name] = 1;
+        }
         const raw = m && (m.rare || m.Rare || m.rarity);
         const id = rareId(raw);
         if (m && m.name && id) rar[m.name] = id;
         seen[raw || '—'] = (seen[raw || '—'] || 0) + 1;
       }
       if (Object.keys(rar).length) st.rar = rar;
+      st.pat = pat;
+      console.log(`поля getModelInfo: ${[...keys].join(', ')}; с паттерном: ${Object.keys(pat).length}`);
       if (Object.keys(col).length) st.col = col;
       const cs = {}; for (const v of Object.values(col)) if (v[0]) cs[v[0]] = (cs[v[0]] || 0) + 1;
       console.log(`коллекции: ${Object.keys(cs).length}; примеры: ${Object.entries(cs).slice(0, 8).map(([k, v]) => k + '×' + v).join(', ')}`);
@@ -131,15 +141,16 @@ function priceAt(rows, at) { let p = 0; for (const r of rows) { if (r.t <= at) p
   }
 
   // 3) итоговый файл для приложения
-  const items = {}, ch = {}, rar = {}, col = {};
+  const items = {}, ch = {}, rar = {}, col = {}, pat = {};
   for (const [k, v] of Object.entries(st.items)) {
     if (!(v && v.p > 0)) continue;
     items[k] = v.p; ch[k] = [v.d || 0, v.w || 0];
     if (st.rar[k]) rar[k] = st.rar[k];
+    if (st.pat && st.pat[k]) pat[k] = 1;
     if (st.col && st.col[k]) col[k] = st.col[k];
   }
   fs.writeFileSync('state.json', JSON.stringify(st));
-  fs.writeFileSync('so2prices.json', JSON.stringify({ updated: now(), cur: 'G', src: 'standoff-2.com', items, ch, rar, col }));
+  fs.writeFileSync('so2prices.json', JSON.stringify({ updated: now(), cur: 'G', src: 'standoff-2.com', items, ch, rar, col, pat }));
   const ages = Object.values(st.items).map((v) => now() - (v.t || 0));
   const oldest = ages.length ? Math.round(Math.max(...ages) / 3600) : 0;
   console.log(`✓ обновлено ${ok}, ошибок ${fail}, пауз из-за 429: ${s429}; всего с ценой ${Object.keys(items).length} из ${st.names.length}; самая старая цена — ${oldest} ч назад (${Math.round((Date.now() - t0) / 1000)} с)`);
